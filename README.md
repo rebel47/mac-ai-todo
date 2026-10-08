@@ -8,10 +8,10 @@ Designed specifically for macOS Sonoma and Sequoia, adhering strictly to Apple's
 
 ## ✨ Features
 
-- **⚡ Unified Direct AI Input (No bloated modal dialogs)**:
-  - **Type or Paste Directly**: Paste multi-task summaries, emails, meeting notes, or unstructured brain dumps right into the main input bar — the bar **expands smoothly downward** as the text grows, up to six lines, then scrolls. `Shift+Return` inserts a line break, `Return` submits.
+- **⚡ Unified Direct Input (No bloated modal dialogs)**:
+  - **Type or Paste Directly**: Paste multi-task summaries, emails, meeting notes, or unstructured brain dumps right into the main input bar — the bar **expands smoothly downward** as the text grows, up to six lines, then scrolls. `Shift+Return` inserts a line break, `Return` adds the text directly — no network call, no AI.
   - **🎙️ Voice Dictation**: Click the microphone icon directly in the input bar to speak. Apple Speech Recognition transcribes your words into the input bar in real time, growing with the transcript.
-  - **✨ One-Click AI Extraction**: Click the **✨ AI** button or press Return—tasks are automatically extracted and added directly to your list.
+  - **✨ AI Extraction only when you ask for it**: Press the **✨** button next to the arrow to send that one entry to GPT — tasks, priorities and deadlines are extracted and added to your list. The AI is never triggered by `Return`; it runs only when you click ✨.
 - **💎 Powered by OpenAI GPT-5.4 Mini**:
   - Uses a single model — **GPT-5.4 Mini** (`gpt-5.4-mini-2026-03-17`) — for fast, high-quality reasoning. No fallback chain, no on-device parser.
   - **🔑 Quick API Key Button**: Click the subtle key icon in the input bar to paste your OpenAI API key (`sk-...`).
@@ -67,8 +67,9 @@ This compiles the Swift sources with `-O` release optimization, reassembles the 
 | `⌘ 5` | Switch to **Completed** view |
 | `⌘ S` | Toggle Sidebar visibility |
 | `⌘ ⇧ K` | Clear completed tasks |
-| `Return` | Submit new task or extract with AI |
+| `Return` | Add task directly (no AI call) |
 | `⇧ Return` | Insert a line break in the input bar |
+| Click **✨** | Extract this entry with AI (GPT-5.4 Mini) |
 | `Double Click` | Open task detail & notes editor |
 
 ---

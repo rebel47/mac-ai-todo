@@ -53,7 +53,7 @@ struct NewTaskBar: View {
                         minHeight: Self.minInputHeight,
                         maxHeight: Self.maxInputHeight,
                         focusRequest: isFieldFocused,
-                        onSubmit: { submitWithAI() },
+                        onSubmit: { submitPlain() },
                         onHeightChange: { measuredHeight in
                             guard abs(measuredHeight - inputHeight) > 0.5 else { return }
                             inputHeight = measuredHeight
@@ -75,8 +75,11 @@ struct NewTaskBar: View {
                     // 3. Quick Attributes (Due Date, Priority, Tag)
                     quickAttributesMenu
 
-                    // 4. Submit / AI Extract Button
+                    // 4. Submit (adds directly) + optional AI extract for this one entry
                     if !taskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+                        if hasOpenAIKey {
+                            aiExtractButton
+                        }
                         submitButton
                     }
                 }
@@ -100,9 +103,11 @@ struct NewTaskBar: View {
             // Status feedback banner
             if let status = statusToast {
                 HStack(spacing: 6) {
-                    Image(systemName: status.contains("⚠️") ? "exclamationmark.triangle" : "sparkles")
+                    Image(systemName: status.contains("⚠️") ? "exclamationmark.triangle" :
+                            (status.contains("✨") ? "sparkles" : "checkmark.circle"))
                         .font(.system(size: 11))
-                        .foregroundStyle(status.contains("⚠️") ? Color.orange : Color.pastelMint)
+                        .foregroundStyle(status.contains("⚠️") ? Color.orange :
+                                (status.contains("✨") ? Color.pastelMint : Color.green))
                     Text(status)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(status.contains("⚠️") ? Color.orange : Color.secondary)
@@ -133,7 +138,7 @@ struct NewTaskBar: View {
             return "Listening to your voice... Speak now"
         }
         if hasOpenAIKey {
-            return "Add task or paste summary... (GPT-5.4 Mini enabled)"
+            return "Add task or paste summary... (Return to add · ✨ only when you want AI)"
         }
         return "Add task or paste summary... (press Return to add)"
     }
@@ -188,7 +193,7 @@ struct NewTaskBar: View {
             speechRecognizer.stopRecording()
             isMicPulsing = false
             if !taskTitle.isEmpty {
-                submitWithAI()
+                submitPlain()
             }
         } else {
             taskTitle = ""
@@ -298,25 +303,38 @@ struct NewTaskBar: View {
         .frame(width: 310)
     }
 
-    // MARK: - Submit Button
+    // MARK: - Submit Buttons
 
+    /// Adds the text directly as one plain task — no network call.
     private var submitButton: some View {
+        Button {
+            submitPlain()
+        } label: {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .transition(.scale.combined(with: .opacity))
+        .help("Add task (Return)")
+    }
+
+    /// Sends this one submission through GPT for task/deadline extraction.
+    /// Only shown when a key is configured; AI never runs unless pressed.
+    private var aiExtractButton: some View {
         Button {
             submitWithAI()
         } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.pastelMint)
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.accentColor)
-            }
+            Image(systemName: "sparkles")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color.pastelMint)
+                .frame(width: 20, height: 20)
+                .background(Color.pastelMint.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.plain)
         .transition(.scale.combined(with: .opacity))
         .disabled(isProcessingAI)
-        .help("Submit and parse with AI")
+        .help("Extract tasks & deadlines with AI (GPT-5.4 Mini)")
     }
 
     // MARK: - Quick Attributes (Date, Priority, Tag)
@@ -394,8 +412,35 @@ struct NewTaskBar: View {
         }
     }
 
+    // MARK: - Plain Submission
+
+    /// Adds the raw text as a single task — no AI call, no network round-trip.
+    private func submitPlain() {
+        let text = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        if speechRecognizer.isRecording {
+            speechRecognizer.stopRecording()
+            isMicPulsing = false
+        }
+
+        store.addTask(
+            title: text,
+            notes: "",
+            dueDate: selectedDueDate,
+            priority: selectedPriority,
+            tagId: selectedTagId
+        )
+
+        showToast("Added task")
+        taskTitle = ""
+        presetBasedOnCurrentFilter()
+        isFieldFocused = true
+    }
+
     // MARK: - Unified AI Submission Action
 
+    /// Runs this one entry through GPT for multi-task/deadline extraction.
     private func submitWithAI() {
         let text = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
