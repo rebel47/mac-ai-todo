@@ -1,6 +1,6 @@
 # Todo Mac 📋✨
 
-A sleek, modern, and minimalist native macOS Todo desktop application built with pure **Swift** and **SwiftUI**, powered by **Google Gemini 3 Flash** directly from the main input section.
+A sleek, modern, and minimalist native macOS Todo desktop application built with pure **Swift** and **SwiftUI**, powered by **OpenAI GPT-5.4 Mini** directly from the main input section.
 
 Designed specifically for macOS Sonoma and Sequoia, adhering strictly to Apple's Human Interface Guidelines with clean typography, smooth animations, native frosted materials, and zero Electron bloat.
 
@@ -9,15 +9,16 @@ Designed specifically for macOS Sonoma and Sequoia, adhering strictly to Apple's
 ## ✨ Features
 
 - **⚡ Unified Direct AI Input (No bloated modal dialogs)**:
-  - **Type or Paste Directly**: Paste multi-task summaries, emails, meeting notes, or unstructured brain dumps right into the main input bar.
-  - **🎙️ Voice Dictation**: Click the microphone icon directly in the input bar to speak. Apple Speech Recognition transcribes your words into the input bar in real time.
+  - **Type or Paste Directly**: Paste multi-task summaries, emails, meeting notes, or unstructured brain dumps right into the main input bar — the bar **expands smoothly downward** as the text grows, up to six lines, then scrolls. `Shift+Return` inserts a line break, `Return` submits.
+  - **🎙️ Voice Dictation**: Click the microphone icon directly in the input bar to speak. Apple Speech Recognition transcribes your words into the input bar in real time, growing with the transcript.
   - **✨ One-Click AI Extraction**: Click the **✨ AI** button or press Return—tasks are automatically extracted and added directly to your list.
-- **💎 Powered by Gemini 3 Flash**:
-  - Uses Google's latest **Gemini 3 Flash** model (`gemini-3-flash`) for fast, high-quality reasoning.
-  - **🔑 Quick API Key Button**: Click the subtle key icon in the input bar to paste your Gemini API key (`AIza...`).
-  - **Zero-Setup Fallback**: If no API key is provided, the app seamlessly runs using Apple's fast on-device NLP engine.
-- **🧠 Strict Timing & Date Handling**:
-  - Automatically parses explicit dates and relative times (e.g., *"tomorrow at 3pm"*, *"by Friday"*, *"today"*, *"Oct 15"*, *"at 4pm"*).
+- **💎 Powered by OpenAI GPT-5.4 Mini**:
+  - Uses a single model — **GPT-5.4 Mini** (`gpt-5.4-mini-2026-03-17`) — for fast, high-quality reasoning. No fallback chain, no on-device parser.
+  - **🔑 Quick API Key Button**: Click the subtle key icon in the input bar to paste your OpenAI API key (`sk-...`).
+  - **No key? No problem**: Without an API key, whatever you type is added directly as a plain task.
+- **🧠 Strict Timing & Deadline Handling**:
+  - Captures **every** form of timing as the task's deadline: explicit dates (*"Oct 15"*), weekdays (*"by Friday"*), relative expressions (*"tomorrow"*, *"in 3 days"*, *"next week"*, *"end of the week"*), clock times (*"at 3pm"*, *"by 5pm"*, *"before noon"*) and deadline wording (*"deadline Friday"*, *"due tomorrow"*, *"by EOD"*).
+  - Captured times are surfaced on the task badge (e.g. **Today, 3:00 PM**); pure dates stay clean (e.g. **Tomorrow**).
   - **If date or timing information is not provided, missing, or unclear, the due date field is left completely empty (`nil`)**.
 - **Priority & Tag Detection**: Automatically identifies urgency (*urgent*, *asap*, *critical*) and matches tags (*Work*, *Personal*, *Ideas*, *Urgent*).
 - **Minimalist & Modern UI**: Clean SF Pro typography, uncluttered layout, native sidebar, and subtle translucent materials.
@@ -67,6 +68,7 @@ This compiles the Swift sources with `-O` release optimization, reassembles the 
 | `⌘ S` | Toggle Sidebar visibility |
 | `⌘ ⇧ K` | Clear completed tasks |
 | `Return` | Submit new task or extract with AI |
+| `⇧ Return` | Insert a line break in the input bar |
 | `Double Click` | Open task detail & notes editor |
 
 ---
@@ -90,7 +92,7 @@ Todo Mac/
 │       │   └── FilterType.swift  # Navigation & filter options
 │       ├── Services/
 │       │   ├── SpeechRecognizer.swift # Speech-to-text dictation service
-│       │   └── AITaskParser.swift     # Gemini 3 Flash & Local NLP parser
+│       │   └── AITaskParser.swift     # OpenAI GPT-5.4 Mini task extractor
 │       ├── Store/
 │       │   └── TodoStore.swift   # Observable state & JSON persistence
 │       └── Views/

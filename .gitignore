@@ -7,4 +7,15 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 /TodoApp
+
+# Local todo data (TodoStore falls back to ./todos_data.json)
 todo_data.json
+todos_data.json
+
+# Secrets / API keys — never commit these
+.env
+.env.*
+*.key
+*ApiKey*
+*APIKey*
+openai_key*

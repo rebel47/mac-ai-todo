@@ -23,29 +23,26 @@ class SpeechRecognizer: ObservableObject {
         authorizationStatus = SFSpeechRecognizer.authorizationStatus()
     }
 
-    func requestAuthorization(completion: @escaping (Bool) -> Void) {
-        SFSpeechRecognizer.requestAuthorization { [weak self] status in
-            DispatchQueue.main.async {
-                self?.authorizationStatus = status
-                if status == .authorized {
-                    AVCaptureDevice.requestAccess(for: .audio) { micGranted in
-                        DispatchQueue.main.async {
-                            completion(micGranted)
-                        }
-                    }
-                } else {
-                    completion(false)
-                }
-            }
+    /// Requests speech-recognition and microphone permission.
+    /// Isolated to the main actor; safely awaits Apple's completion-handler APIs.
+    func requestAuthorization() async -> Bool {
+        let status: SFSpeechRecognizerAuthorizationStatus = await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
+        authorizationStatus = status
+        guard status == .authorized else { return false }
+
+        return await AVCaptureDevice.requestAccess(for: .audio)
     }
 
     func startRecording() {
         guard !isRecording else { return }
         errorMessage = nil
 
-        requestAuthorization { [weak self] authorized in
+        Task { [weak self] in
             guard let self = self else { return }
+
+            let authorized = await self.requestAuthorization()
             guard authorized else {
                 self.errorMessage = "Microphone or Speech Recognition access was denied. Please allow access in System Settings or paste text below."
                 return

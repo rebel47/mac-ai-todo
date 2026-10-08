@@ -4,8 +4,8 @@ struct NewTaskBar: View {
     @ObservedObject var store: TodoStore
     @FocusState private var isFieldFocused: Bool
 
-    // Gemini API Key storage
-    @AppStorage("gemini_api_key") private var geminiApiKey: String = ""
+    // OpenAI API Key storage
+    @AppStorage("openai_api_key") private var openaiApiKey: String = ""
 
     // Voice dictation state
     @StateObject private var speechRecognizer = SpeechRecognizer()
@@ -17,6 +17,12 @@ struct NewTaskBar: View {
     @State private var selectedTagId: UUID? = nil
     @State private var selectedDueDate: Date? = nil
 
+    // Auto-expanding input height (driven by the hidden measuring probe below)
+    @State private var inputHeight: CGFloat = Self.minInputHeight
+
+    private static let minInputHeight: CGFloat = 26
+    private static let maxInputHeight: CGFloat = 120
+
     // UI Feedback state
     @State private var isShowingKeyPopover: Bool = false
     @State private var isProcessingAI: Bool = false
@@ -24,26 +30,67 @@ struct NewTaskBar: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            // Main Input Container
-            HStack(spacing: 8) {
+            // Main Input Container (grows downward as text wraps)
+            HStack(alignment: .top, spacing: 8) {
                 // Leading Icon / Status Spinner
                 leadingStatusIcon
+                    .padding(.top, 2)
 
-                // Main Text Input (Type or Paste anything here)
-                TextField(inputPlaceholder, text: $taskTitle)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .focused($isFieldFocused)
-                    .onSubmit {
-                        submitWithAI()
+                // Main Text Input (type, paste or dictate — expands smoothly)
+                ZStack(alignment: .topLeading) {
+                    // Invisible measuring probe: renders the text at the editor's
+                    // width so we always know the exact wrapped height.
+                    Text(taskTitle.isEmpty ? " " : taskTitle)
+                        .font(.system(size: 14))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundStyle(.clear)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(key: InputHeightPreferenceKey.self, value: geo.size.height)
+                            }
+                        )
+
+                    if taskTitle.isEmpty {
+                        Text(inputPlaceholder)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .allowsHitTesting(false)
                     }
+
+                    TextEditor(text: $taskTitle)
+                        .font(.system(size: 14))
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
+                        .focused($isFieldFocused)
+                        .onKeyPress(keys: [.return]) { press in
+                            // Shift+Return still inserts a line break
+                            guard !press.modifiers.contains(.shift) else { return .ignored }
+                            submitWithAI()
+                            return .handled
+                        }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(height: inputHeight)
+                .onPreferenceChange(InputHeightPreferenceKey.self) { measuredHeight in
+                    let clamped = min(max(measuredHeight, Self.minInputHeight), Self.maxInputHeight)
+                    guard abs(clamped - inputHeight) > 0.5 else { return }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        inputHeight = clamped
+                    }
+                }
 
                 // Controls Row
                 HStack(spacing: 6) {
                     // 1. Microphone Dictation Button
                     micButton
 
-                    // 2. Gemini API Key Configuration Popover
+                    // 2. OpenAI API Key Configuration Popover
                     apiKeyButton
 
                     // 3. Quick Attributes (Due Date, Priority, Tag)
@@ -56,7 +103,7 @@ struct NewTaskBar: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color(nsColor: .controlBackgroundColor))
@@ -106,8 +153,8 @@ struct NewTaskBar: View {
         if speechRecognizer.isRecording {
             return "Listening to your voice... Speak now"
         }
-        if hasGeminiKey {
-            return "Add task or paste summary... (Gemini 3 Flash enabled)"
+        if hasOpenAIKey {
+            return "Add task or paste summary... (GPT-5.4 Mini enabled)"
         }
         return "Add task or paste summary... (press Return to add)"
     }
@@ -179,11 +226,11 @@ struct NewTaskBar: View {
             isShowingKeyPopover.toggle()
         } label: {
             HStack(spacing: 3) {
-                Image(systemName: hasGeminiKey ? "key.fill" : "key")
+                Image(systemName: hasOpenAIKey ? "key.fill" : "key")
                     .font(.system(size: 11))
-                    .foregroundStyle(hasGeminiKey ? Color.green : Color.secondary)
+                    .foregroundStyle(hasOpenAIKey ? Color.green : Color.secondary)
 
-                if hasGeminiKey {
+                if hasOpenAIKey {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 5, height: 5)
@@ -194,14 +241,14 @@ struct NewTaskBar: View {
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .help("Gemini 3 Flash API Key Settings")
+        .help("OpenAI API Key Settings")
         .popover(isPresented: $isShowingKeyPopover) {
             apiKeyPopoverView
         }
     }
 
-    private var hasGeminiKey: Bool {
-        !geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var hasOpenAIKey: Bool {
+        !openaiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var apiKeyPopoverView: some View {
@@ -210,7 +257,7 @@ struct NewTaskBar: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.purple)
-                Text("Gemini 3 Flash API Key")
+                Text("OpenAI API Key")
                     .font(.system(size: 13, weight: .semibold))
             }
 
@@ -219,17 +266,17 @@ struct NewTaskBar: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                SecureField("Paste your Gemini API key (AIza...)", text: $geminiApiKey)
+                SecureField("Paste your OpenAI API key (sk-...)", text: $openaiApiKey)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 280)
             }
 
-            if hasGeminiKey {
+            if hasOpenAIKey {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Color.green)
                         .font(.system(size: 12))
-                    Text("Gemini 3 Flash Active")
+                    Text("GPT-5.4 Mini Active")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.green)
                 }
@@ -238,20 +285,20 @@ struct NewTaskBar: View {
                     Image(systemName: "bolt.shield")
                         .foregroundStyle(Color.secondary)
                         .font(.system(size: 12))
-                    Text("Using Apple On-Device Smart AI")
+                    Text("No API key — tasks are added directly")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Text("Get a free key at aistudio.google.com")
+            Text("Get a key at platform.openai.com/api-keys")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
             HStack {
-                if hasGeminiKey {
+                if hasOpenAIKey {
                     Button("Remove Key") {
-                        geminiApiKey = ""
+                        openaiApiKey = ""
                     }
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -386,7 +433,7 @@ struct NewTaskBar: View {
         }
 
         isProcessingAI = true
-        let key = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = openaiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let manualDueDate = selectedDueDate
         let manualPriority = selectedPriority
         let manualTagId = selectedTagId
@@ -416,13 +463,9 @@ struct NewTaskBar: View {
                     }
                     NSSound(named: "Glass")?.play()
 
-                    if let err = result.errorDescription {
-                        showToast("⚠️ \(err) · Added via Local AI")
-                    } else {
-                        showToast("✨ Added \(result.tasks.count) \(result.tasks.count == 1 ? "task" : "tasks") via \(result.engineName)")
-                    }
+                    showToast("✨ Added \(result.tasks.count) \(result.tasks.count == 1 ? "task" : "tasks") via \(result.engineName)")
                 } else {
-                    // Fallback to adding the single item
+                    // No API key, or the OpenAI call failed: add the raw input as a plain task
                     store.addTask(
                         title: text,
                         notes: "",
@@ -430,7 +473,11 @@ struct NewTaskBar: View {
                         priority: manualPriority,
                         tagId: manualTagId
                     )
-                    showToast("Added task")
+                    if let err = result.errorDescription {
+                        showToast("⚠️ \(err) · Added as plain task")
+                    } else {
+                        showToast("Added task")
+                    }
                 }
 
                 taskTitle = ""
@@ -478,4 +525,14 @@ struct NewTaskBar: View {
 
 extension Notification.Name {
     static let focusNewTaskField = Notification.Name("focusNewTaskField")
+}
+
+/// Measures the natural (wrapped) height of the hidden text probe so the
+/// input bar can grow smoothly as more lines are typed, dictated or pasted.
+struct InputHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
 }

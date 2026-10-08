@@ -30,12 +30,14 @@ struct TaskItem: Identifiable, Codable, Hashable {
     var formattedDueDate: String {
         guard let dueDate = dueDate else { return "" }
         let calendar = Calendar.current
+
+        let dayPart: String
         if calendar.isDateInToday(dueDate) {
-            return "Today"
+            dayPart = "Today"
         } else if calendar.isDateInTomorrow(dueDate) {
-            return "Tomorrow"
+            dayPart = "Tomorrow"
         } else if calendar.isDateInYesterday(dueDate) {
-            return "Yesterday"
+            dayPart = "Yesterday"
         } else {
             let formatter = DateFormatter()
             if calendar.isDate(dueDate, equalTo: Date(), toGranularity: .year) {
@@ -43,7 +45,16 @@ struct TaskItem: Identifiable, Codable, Hashable {
             } else {
                 formatter.dateFormat = "MMM d, yyyy"
             }
-            return formatter.string(from: dueDate)
+            dayPart = formatter.string(from: dueDate)
         }
+
+        // Surface the deadline time whenever one was captured
+        let hasTime = calendar.component(.hour, from: dueDate) != 0
+            || calendar.component(.minute, from: dueDate) != 0
+        guard hasTime else { return dayPart }
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        return "\(dayPart), \(timeFormatter.string(from: dueDate))"
     }
 }

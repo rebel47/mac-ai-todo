@@ -27,8 +27,21 @@ struct TodoAppCoreTests {
         #expect(todayTask.isToday == true)
         #expect(tomorrowTask.isUpcoming == true)
         #expect(yesterdayTask.isOverdue == true)
-        #expect(todayTask.formattedDueDate == "Today")
-        #expect(tomorrowTask.formattedDueDate == "Tomorrow")
+        #expect(todayTask.formattedDueDate.hasPrefix("Today"))
+        #expect(tomorrowTask.formattedDueDate.hasPrefix("Tomorrow"))
+    }
+
+    @Test("Deadline times are surfaced while pure dates stay clean")
+    func testFormattedDueDateIncludesTime() {
+        let calendar = Calendar.current
+        let midnight = calendar.startOfDay(for: Date())
+        let atThreePM = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: midnight)!
+
+        let pureDate = TaskItem(title: "Pure date", dueDate: midnight)
+        let deadline = TaskItem(title: "Deadline", dueDate: atThreePM)
+
+        #expect(pureDate.formattedDueDate == "Today")
+        #expect(deadline.formattedDueDate.hasPrefix("Today, "))
     }
 
     @Test("Priority ordering behaves hierarchically")
@@ -56,54 +69,72 @@ struct TodoAppCoreTests {
         #expect(store.tasks.count == initialCount)
     }
 
-    @Test("AI Task Parser extracts dates when provided and leaves nil when missing or unclear")
-    func testAITaskParserDates() {
+    @Test("Extraction is skipped when no OpenAI API key is configured")
+    func testNoAPIKeySkipsExtraction() async {
         let tags = TagItem.defaultTags
-        let parser = AITaskParser.shared
+        let result = await AITaskParser.shared.extractTasks(
+            from: "Finalize the quarterly presentation by tomorrow at 3pm urgent",
+            apiKey: "",
+            availableTags: tags
+        )
 
-        // Test with explicit timing
-        let textWithDate = "Finalize the quarterly presentation by tomorrow at 3pm urgent"
-        let tasksWithDate = parser.parseTasksLocal(from: textWithDate, availableTags: tags)
-        #expect(tasksWithDate.count == 1)
-        #expect(tasksWithDate.first?.dueDate != nil)
-        #expect(tasksWithDate.first?.priority == .high)
-
-        // Test WITHOUT timing - should leave dueDate strictly nil
-        let textWithoutDate = "Buy milk from the grocery store"
-        let tasksWithoutDate = parser.parseTasksLocal(from: textWithoutDate, availableTags: tags)
-        #expect(tasksWithoutDate.count == 1)
-        #expect(tasksWithoutDate.first?.dueDate == nil)
-        #expect(tasksWithoutDate.first?.priority == .none)
+        #expect(result.tasks.isEmpty)
+        #expect(result.errorDescription == nil)
     }
 
-    @Test("AI Task Parser splits multiple tasks separated by commas and conjunctions")
-    func testAITaskParserSplitsCommasAndConjunctions() {
-        let tags = TagItem.defaultTags
-        let parser = AITaskParser.shared
+    @Test("Extraction is skipped for whitespace-only API keys")
+    func testWhitespaceAPIKeySkipsExtraction() async {
+        let result = await AITaskParser.shared.extractTasks(
+            from: "Buy milk from the grocery store",
+            apiKey: "   \n  ",
+            availableTags: TagItem.defaultTags
+        )
 
-        let singleSentenceMultipleTasks = "Buy milk, call the dentist and finish homework"
-        let tasks = parser.parseTasksLocal(from: singleSentenceMultipleTasks, availableTags: tags)
-        #expect(tasks.count == 3)
-        #expect(tasks[0].title.lowercased().contains("milk"))
-        #expect(tasks[1].title.lowercased().contains("dentist"))
-        #expect(tasks[2].title.lowercased().contains("homework"))
+        #expect(result.tasks.isEmpty)
+        #expect(result.errorDescription == nil)
     }
 
-    @Test("AI Task Parser extracts multiple tasks from paragraphs or meeting notes")
-    func testAITaskParserMultipleTasks() {
+    @Test("LLM response parsing decodes dates, priorities and tags")
+    func testLLMResponseParsing() {
         let tags = TagItem.defaultTags
-        let parser = AITaskParser.shared
+        let workTagId = tags.first { $0.name == "Work" }?.id
 
-        let meetingSummary = """
-        1. Review landing page mockups by tomorrow
-        2. Fix database query latency (urgent)
-        3. Brainstorm new app features when possible
+        let json = """
+        {"tasks": [
+            {"title": "Finalize the quarterly presentation", "notes": "Slide deck v3",
+             "dueDate": "2026-10-09T15:00:00Z", "priority": "High", "tag": "Work"},
+            {"title": "Brainstorm new app features", "notes": "",
+             "dueDate": null, "priority": "None", "tag": null}
+        ]}
         """
 
-        let tasks = parser.parseTasksLocal(from: meetingSummary, availableTags: tags)
-        #expect(tasks.count == 3)
-        #expect(tasks[0].dueDate != nil)
-        #expect(tasks[1].priority == .high)
-        #expect(tasks[2].dueDate == nil) // Unclear/missing date -> left empty
+        let tasks = AITaskParser.shared.parseLLMJSONResponse(json, availableTags: tags)
+        #expect(tasks?.count == 2)
+        #expect(tasks?.first?.title == "Finalize the quarterly presentation")
+        #expect(tasks?.first?.notes == "Slide deck v3")
+        #expect(tasks?.first?.dueDate != nil)
+        #expect(tasks?.first?.priority == .high)
+        #expect(tasks?.first?.tagId == workTagId)
+        #expect(tasks?.last?.dueDate == nil) // Unclear/missing date -> left empty
+        #expect(tasks?.last?.priority == Priority.none)
+        #expect(tasks?.last?.tagId == nil)
+    }
+
+    @Test("LLM response parsing leaves dueDate nil when missing and rejects invalid JSON")
+    func testLLMResponseParsingEdgeCases() {
+        let tags = TagItem.defaultTags
+
+        let noDateJSON = """
+        {"tasks": [{"title": "Buy milk from the grocery store", "notes": "",
+                    "dueDate": null, "priority": "None", "tag": null}]}
+        """
+        let tasks = AITaskParser.shared.parseLLMJSONResponse(noDateJSON, availableTags: tags)
+        #expect(tasks?.count == 1)
+        #expect(tasks?.first?.dueDate == nil)
+        #expect(tasks?.first?.priority == Priority.none)
+
+        #expect(AITaskParser.shared.parseLLMJSONResponse("not json at all", availableTags: tags) == nil)
+        #expect(AITaskParser.shared.parseLLMJSONResponse("{}", availableTags: tags) == nil)
+        #expect(AITaskParser.shared.parseLLMJSONResponse(#"{"tasks": []}"#, availableTags: tags) == nil)
     }
 }

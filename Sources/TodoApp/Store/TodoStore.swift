@@ -2,7 +2,9 @@ import SwiftUI
 import AppKit
 import Combine
 
-class TodoStore: ObservableObject {
+// All mutation happens on the main thread (SwiftUI views, RunLoop.main debounce,
+// main-queue termination observer), which justifies the unchecked conformance.
+final class TodoStore: ObservableObject, @unchecked Sendable {
     @Published var tasks: [TaskItem] = [] {
         didSet {
             scheduleSave()
