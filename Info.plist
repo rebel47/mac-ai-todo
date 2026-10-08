@@ -30,5 +30,9 @@
     <string>NSApplication</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Todo requires access to the microphone to transcribe your spoken voice notes into tasks.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Todo uses Apple Speech Recognition to convert your speech into actionable to-do items.</string>
 </dict>
 </plist>

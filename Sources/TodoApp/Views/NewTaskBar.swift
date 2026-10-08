@@ -126,6 +126,34 @@ struct NewTaskBar: View {
                     .buttonStyle(.plain)
                     .help("Set Tag")
 
+                    // AI Assistant Trigger Button
+                    Button {
+                        store.isShowingAIAssistant = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.blue, .purple, .pink],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            Text("AI")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(
+                            Color.purple.opacity(0.1),
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Create tasks with AI (Voice or Text) - ⌘I")
+
                     // Submit button
                     if !taskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
                         Button {

@@ -9,7 +9,7 @@ struct TodoApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(store: store, columnVisibility: $columnVisibility)
-                .frame(minWidth: 680, minHeight: 460)
+                .frame(minWidth: 700, minHeight: 480)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -20,6 +20,11 @@ struct TodoApp: App {
                     NotificationCenter.default.post(name: .focusNewTaskField, object: nil)
                 }
                 .keyboardShortcut("n", modifiers: .command)
+
+                Button("AI Task Creator...") {
+                    store.isShowingAIAssistant = true
+                }
+                .keyboardShortcut("i", modifiers: .command)
             }
 
             CommandMenu("View") {
@@ -66,7 +71,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(store: store)
-                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 280)
         } detail: {
             TaskListView(store: store)
         }
@@ -88,13 +93,48 @@ struct ContentView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    NotificationCenter.default.post(name: .focusNewTaskField, object: nil)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .semibold))
+                HStack(spacing: 8) {
+                    // AI Assistant Trigger
+                    Button {
+                        store.isShowingAIAssistant = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.blue, .purple, .pink],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            Text("AI Creator")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            Color.purple.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Create tasks with Voice or Text using AI (⌘I)")
+
+                    // Standard New Task Button
+                    Button {
+                        NotificationCenter.default.post(name: .focusNewTaskField, object: nil)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .help("New Task (⌘N)")
                 }
-                .help("New Task (⌘N)")
+            }
+        }
+        .sheet(isPresented: $store.isShowingAIAssistant) {
+            AIAssistantSheet(store: store) {
+                store.isShowingAIAssistant = false
             }
         }
     }

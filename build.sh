@@ -13,6 +13,7 @@ swiftc -O -parse-as-library \
     -module-cache-path /tmp/clang-cache \
     Sources/TodoApp/TodoApp.swift \
     Sources/TodoApp/Models/*.swift \
+    Sources/TodoApp/Services/*.swift \
     Sources/TodoApp/Store/*.swift \
     Sources/TodoApp/Views/*.swift \
     -o TodoApp
