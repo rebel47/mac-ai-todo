@@ -30,6 +30,14 @@ class TodoStore: ObservableObject {
             .sink { [weak self] in
                 self?.persistNow()
             }
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.persistNow()
+        }
     }
 
     private func scheduleSave() {

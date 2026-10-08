@@ -24,8 +24,19 @@ struct AIAssistantSheet: View {
     @State private var isProcessing: Bool = false
     @State private var showPreview: Bool = false
 
+    // AI Provider Settings State
+    @AppStorage("ai_provider_raw") private var selectedProviderRaw: String = AIProvider.onDevice.rawValue
+    @AppStorage("ai_openai_key") private var openAIKey: String = ""
+    @AppStorage("ai_gemini_key") private var geminiKey: String = ""
+    @AppStorage("ai_ollama_endpoint") private var ollamaEndpoint: String = "http://localhost:11434"
+    @State private var showingSettingsPopover: Bool = false
+
     // Pulsing animation state for microphone
     @State private var isPulsing: Bool = false
+
+    private var activeProvider: AIProvider {
+        AIProvider(rawValue: selectedProviderRaw) ?? .onDevice
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,7 +52,7 @@ struct AIAssistantSheet: View {
                 inputEntryView
             }
         }
-        .frame(width: 580, height: 600)
+        .frame(width: 600, height: 620)
         .onDisappear {
             speechRecognizer.stopRecording()
         }
@@ -50,7 +61,7 @@ struct AIAssistantSheet: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        HStack {
+        HStack(spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 16, weight: .bold))
@@ -75,11 +86,32 @@ struct AIAssistantSheet: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 260)
+                .frame(width: 250)
             }
 
             Spacer()
 
+            // AI Settings Popover Button
+            Button {
+                showingSettingsPopover.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12))
+                    Text(activeProvider.shortName)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .help("Configure AI Provider & API Keys")
+            .popover(isPresented: $showingSettingsPopover) {
+                aiSettingsPopoverView
+            }
+
+            // Close button
             Button {
                 speechRecognizer.stopRecording()
                 onDismiss()
@@ -93,6 +125,87 @@ struct AIAssistantSheet: View {
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 12)
+    }
+
+    // MARK: - AI Settings Popover
+
+    private var aiSettingsPopoverView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("AI Engine & API Keys")
+                .font(.system(size: 13, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Select Provider:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("", selection: $selectedProviderRaw) {
+                    ForEach(AIProvider.allCases) { prov in
+                        Text(prov.rawValue).tag(prov.rawValue)
+                    }
+                }
+                .labelsHidden()
+            }
+
+            if activeProvider == .onDevice {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundStyle(Color.green)
+                        Text("Apple On-Device NLP Active")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    Text("100% Free, offline, zero latency, and private. No API key required.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            } else if activeProvider == .openAI {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("OpenAI API Key (sk-...):")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    SecureField("Paste sk-... here", text: $openAIKey)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Uses gpt-4o-mini. Stored safely in your local Mac Keychain/defaults.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else if activeProvider == .gemini {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Google Gemini API Key:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    SecureField("Paste AIza... here", text: $geminiKey)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Uses gemini-1.5-flash.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else if activeProvider == .ollama {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ollama Local Endpoint:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("http://localhost:11434", text: $ollamaEndpoint)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Connects to your local Ollama server running llama3.2.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Done") {
+                    showingSettingsPopover = false
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(16)
+        .frame(width: 310)
     }
 
     // MARK: - Input View
@@ -125,8 +238,14 @@ struct AIAssistantSheet: View {
                     processInput()
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                        Text("Extract Tasks")
+                        if isProcessing {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Extracting...")
+                        } else {
+                            Image(systemName: "sparkles")
+                            Text("Extract Tasks")
+                        }
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -474,12 +593,26 @@ struct AIAssistantSheet: View {
         isProcessing = true
 
         let text = currentTextToProcess
-        let parsed = AITaskParser.shared.parseTasks(from: text, availableTags: store.tags)
+        let provider = activeProvider
+        let key = provider == .openAI ? openAIKey : (provider == .gemini ? geminiKey : "")
+        let endpoint = ollamaEndpoint
 
-        withAnimation(.easeInOut) {
-            extractedTasks = parsed
-            isProcessing = false
-            showPreview = true
+        Task {
+            let parsed = await AITaskParser.shared.parseTasksAsync(
+                from: text,
+                availableTags: store.tags,
+                provider: provider,
+                apiKey: key,
+                ollamaEndpoint: endpoint
+            )
+
+            await MainActor.run {
+                withAnimation(.easeInOut) {
+                    self.extractedTasks = parsed
+                    self.isProcessing = false
+                    self.showPreview = true
+                }
+            }
         }
     }
 
