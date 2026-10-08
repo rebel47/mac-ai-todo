@@ -8,8 +8,7 @@ DerivedData/
 .netrc
 /TodoApp
 
-# Generated from icon.png by build.sh
-/AppIcon.icns
+# Generated intermediate from icon.png (build.sh)
 /AppIcon.iconset
 
 # Local todo data (TodoStore falls back to ./todos_data.json)
