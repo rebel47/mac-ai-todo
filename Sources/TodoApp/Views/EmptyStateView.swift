@@ -73,7 +73,7 @@ struct EmptyStateView: View {
         case .completed:
             return .green
         case .tag:
-            return .purple
+            return .pastelLavender
         }
     }
 

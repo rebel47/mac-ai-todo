@@ -126,7 +126,7 @@ struct SidebarView: View {
 
                             Capsule()
                                 .fill(LinearGradient(
-                                    colors: [.blue, .purple],
+                                    colors: [.pastelSky, .pastelMint],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 ))

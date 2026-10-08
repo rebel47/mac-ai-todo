@@ -18,6 +18,13 @@ struct TagItem: Identifiable, Codable, Hashable {
 }
 
 extension Color {
+    /// Soft pastel palette used for accents and highlights.
+    static let pastelSky = Color(hex: "#9CCDF2")
+    static let pastelMint = Color(hex: "#7FD3B8")
+    static let pastelBlush = Color(hex: "#F4C6D2")
+    static let pastelLavender = Color(hex: "#CFC3EF")
+    static let pastelButter = Color(hex: "#F3DFA8")
+
     init(hex: String) {
         let hexClean = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0

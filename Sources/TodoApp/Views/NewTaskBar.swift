@@ -91,7 +91,7 @@ struct NewTaskBar: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        isProcessingAI ? Color.purple.opacity(0.7) :
+                        isProcessingAI ? Color.pastelMint.opacity(0.9) :
                             (isFieldFocused ? Color.accentColor.opacity(0.6) : Color.primary.opacity(0.08)),
                         lineWidth: isProcessingAI ? 1.5 : 1
                     )
@@ -102,7 +102,7 @@ struct NewTaskBar: View {
                 HStack(spacing: 6) {
                     Image(systemName: status.contains("⚠️") ? "exclamationmark.triangle" : "sparkles")
                         .font(.system(size: 11))
-                        .foregroundStyle(status.contains("⚠️") ? Color.orange : Color.purple)
+                        .foregroundStyle(status.contains("⚠️") ? Color.orange : Color.pastelMint)
                     Text(status)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(status.contains("⚠️") ? Color.orange : Color.secondary)
@@ -235,7 +235,7 @@ struct NewTaskBar: View {
             HStack {
                 Image(systemName: "sparkles")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(Color.pastelMint)
                 Text("OpenAI API Key")
                     .font(.system(size: 13, weight: .semibold))
             }
@@ -307,13 +307,7 @@ struct NewTaskBar: View {
             HStack(spacing: 3) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.blue, .purple, .pink],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .foregroundStyle(Color.pastelMint)
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 15))
                     .foregroundStyle(Color.accentColor)
