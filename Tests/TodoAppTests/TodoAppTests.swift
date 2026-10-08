@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import AppKit
+import SwiftUI
 @testable import TodoApp
 
 @Suite("TodoApp Core Tests")
@@ -52,38 +53,64 @@ struct TodoAppCoreTests {
         #expect(Priority.low.order > Priority.none.order)
     }
 
-    @Test("Growing input reports clamped heights: min for one line, max once full")
+    @Test("Growing input measures min for one line and clamps to max when full")
     @MainActor
     func testGrowingTextEditorClampsHeight() {
         var reported: [CGFloat] = []
-        let coordinator = GrowingTextEditor.Coordinator(
-            GrowingTextEditor(
-                text: .constant("hello"),
-                minHeight: 26,
-                maxHeight: 120,
-                onHeightChange: { reported.append($0) }
-            )
+        let editor = GrowingTextEditor(
+            text: .constant(""),
+            minHeight: 26,
+            maxHeight: 120,
+            onHeightChange: { reported.append($0) }
         )
+        let coordinator = editor.makeCoordinator()
 
         let textView = InputTextView()
-        textView.frame = NSRect(x: 0, y: 0, width: 300, height: 1000)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
         textView.textContainerInset = NSSize(width: 4, height: 4)
         textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.containerSize = NSSize(width: 300, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.lineBreakMode = .byWordWrapping
+        textView.textContainer?.lineFragmentPadding = 0
         coordinator.textView = textView
 
         coordinator.reportHeight()
-        let oneLine = reported.last
-        #expect(oneLine == 26) // clamped up to the minimum
+        #expect(reported.last == 26) // empty -> minimum
+
+        textView.string = "Short task"
+        coordinator.reportHeight()
+        #expect(reported.last == 26) // one line -> minimum
 
         textView.string = String(
             repeating: "This is a long sentence that definitely wraps across several lines at three hundred points wide. ",
             count: 12
         )
         coordinator.reportHeight()
-        let manyLines = reported.last
-        #expect(manyLines == 120) // clamped down to the maximum
-        #expect((manyLines ?? 0) > (oneLine ?? 0))
+        #expect(reported.last == 120) // clamped to maximum
+    }
+
+    @Test("Typing in the growing input updates the bound text")
+    @MainActor
+    func testGrowingTextEditorUpdatesBinding() {
+        var boundText = ""
+        let editor = GrowingTextEditor(
+            text: Binding(get: { boundText }, set: { boundText = $0 }),
+            minHeight: 26,
+            maxHeight: 120
+        )
+        let coordinator = editor.makeCoordinator()
+
+        let textView = InputTextView()
+        textView.delegate = coordinator
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = NSSize(width: 300, height: CGFloat.greatestFiniteMagnitude)
+        coordinator.textView = textView
+
+        textView.string = "Buy milk"
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+
+        #expect(boundText == "Buy milk")
     }
 
     @Test("TodoStore mutations add, toggle, and delete tasks")

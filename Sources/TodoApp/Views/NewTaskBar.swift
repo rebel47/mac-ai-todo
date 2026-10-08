@@ -17,8 +17,8 @@ struct NewTaskBar: View {
     @State private var selectedTagId: UUID? = nil
     @State private var selectedDueDate: Date? = nil
 
-    // Auto-expanding input height (driven by the hidden measuring probe below)
-    @State private var inputHeight: CGFloat = Self.minInputHeight
+    // Auto-expanding input height, reported by the editor
+    @State private var inputHeight: CGFloat = 26
 
     private static let minInputHeight: CGFloat = 26
     private static let maxInputHeight: CGFloat = 120
@@ -56,9 +56,7 @@ struct NewTaskBar: View {
                         onSubmit: { submitWithAI() },
                         onHeightChange: { measuredHeight in
                             guard abs(measuredHeight - inputHeight) > 0.5 else { return }
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                inputHeight = measuredHeight
-                            }
+                            inputHeight = measuredHeight
                         },
                         onFocusChange: { isFieldFocused = $0 }
                     )

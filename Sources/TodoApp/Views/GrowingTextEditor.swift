@@ -1,12 +1,15 @@
 import SwiftUI
 import AppKit
 
-/// A multi-line text input backed by AppKit's NSTextView.
+/// A multi-line text input backed by AppKit's NSTextView inside a real `NSScrollView`.
 ///
-/// Unlike SwiftUI's `TextEditor`, the text view lives inside a real `NSScrollView`,
-/// so long input scrolls inside the bar instead of overflowing it. The wrapped
-/// content height is reported through `onHeightChange` so the container can grow
-/// smoothly between `minHeight` and `maxHeight`.
+/// The text view reports its wrapped content height through `onHeightChange`, clamped
+/// between `minHeight` and `maxHeight`; past the maximum the inner scroll view takes
+/// over, so long input scrolls inside the bar and can never overflow it.
+///
+/// Height reports are always deferred to the next run-loop turn: SwiftUI applies
+/// state written during its own view-update/layout pass undefinedly (typically by
+/// dropping it), which would leave the bar stuck at its minimum height.
 struct GrowingTextEditor: NSViewRepresentable {
     @Binding var text: String
 
@@ -55,10 +58,10 @@ struct GrowingTextEditor: NSViewRepresentable {
 
         scrollView.documentView = textView
         scrollView.onLayout = { [weak coordinator] in
-            // `layout()` always runs on the main thread, so it is safe to
-            // re-measure the text right here without hopping actors.
+            // Layout always runs on the main thread, but never inside SwiftUI's
+            // own update phase — schedule so the state write lands afterwards.
             MainActor.assumeIsolated {
-                coordinator?.reportHeight()
+                coordinator?.scheduleHeightReport()
             }
         }
 
@@ -85,7 +88,7 @@ struct GrowingTextEditor: NSViewRepresentable {
             }
         }
 
-        coordinator.reportHeight()
+        coordinator.scheduleHeightReport()
     }
 
     @MainActor
@@ -93,6 +96,8 @@ struct GrowingTextEditor: NSViewRepresentable {
         var parent: GrowingTextEditor
         weak var textView: InputTextView?
         var appliedFocus: Bool = false
+
+        private var reportScheduled = false
         private var lastReportedHeight: CGFloat = 0
 
         init(_ parent: GrowingTextEditor) {
@@ -101,8 +106,12 @@ struct GrowingTextEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = textView else { return }
-            parent.text = textView.string
-            reportHeight()
+            // Animating the text change makes SwiftUI animate the resulting
+            // height change too, so the bar grows smoothly instead of snapping.
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                parent.text = textView.string
+            }
+            scheduleHeightReport()
             // Follow the caret once the editor starts scrolling
             textView.scrollRangeToVisible(NSRange(location: textView.string.utf16.count, length: 0))
         }
@@ -118,6 +127,19 @@ struct GrowingTextEditor: NSViewRepresentable {
                 return false
             }
             return true
+        }
+
+        /// Coalesces height reports onto the next run-loop turn so the height is
+        /// never pushed into SwiftUI state while SwiftUI is itself updating.
+        func scheduleHeightReport() {
+            guard !reportScheduled else { return }
+            reportScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.reportScheduled = false
+                    self?.reportHeight()
+                }
+            }
         }
 
         func reportHeight() {
