@@ -2,7 +2,7 @@ import SwiftUI
 
 struct NewTaskBar: View {
     @ObservedObject var store: TodoStore
-    @FocusState private var isFieldFocused: Bool
+    @State private var isFieldFocused: Bool = false
 
     // OpenAI API Key storage
     @AppStorage("openai_api_key") private var openaiApiKey: String = ""
@@ -38,21 +38,6 @@ struct NewTaskBar: View {
 
                 // Main Text Input (type, paste or dictate — expands smoothly)
                 ZStack(alignment: .topLeading) {
-                    // Invisible measuring probe: renders the text at the editor's
-                    // width so we always know the exact wrapped height.
-                    Text(taskTitle.isEmpty ? " " : taskTitle)
-                        .font(.system(size: 14))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .foregroundStyle(.clear)
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(key: InputHeightPreferenceKey.self, value: geo.size.height)
-                            }
-                        )
-
                     if taskTitle.isEmpty {
                         Text(inputPlaceholder)
                             .font(.system(size: 14))
@@ -63,27 +48,23 @@ struct NewTaskBar: View {
                             .allowsHitTesting(false)
                     }
 
-                    TextEditor(text: $taskTitle)
-                        .font(.system(size: 14))
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                        .focused($isFieldFocused)
-                        .onKeyPress(keys: [.return]) { press in
-                            // Shift+Return still inserts a line break
-                            guard !press.modifiers.contains(.shift) else { return .ignored }
-                            submitWithAI()
-                            return .handled
-                        }
+                    GrowingTextEditor(
+                        text: $taskTitle,
+                        minHeight: Self.minInputHeight,
+                        maxHeight: Self.maxInputHeight,
+                        focusRequest: isFieldFocused,
+                        onSubmit: { submitWithAI() },
+                        onHeightChange: { measuredHeight in
+                            guard abs(measuredHeight - inputHeight) > 0.5 else { return }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                inputHeight = measuredHeight
+                            }
+                        },
+                        onFocusChange: { isFieldFocused = $0 }
+                    )
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .frame(height: inputHeight)
-                .onPreferenceChange(InputHeightPreferenceKey.self) { measuredHeight in
-                    let clamped = min(max(measuredHeight, Self.minInputHeight), Self.maxInputHeight)
-                    guard abs(clamped - inputHeight) > 0.5 else { return }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        inputHeight = clamped
-                    }
-                }
 
                 // Controls Row
                 HStack(spacing: 6) {
@@ -525,14 +506,4 @@ struct NewTaskBar: View {
 
 extension Notification.Name {
     static let focusNewTaskField = Notification.Name("focusNewTaskField")
-}
-
-/// Measures the natural (wrapped) height of the hidden text probe so the
-/// input bar can grow smoothly as more lines are typed, dictated or pasted.
-struct InputHeightPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
 }

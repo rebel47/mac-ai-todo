@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AppKit
 @testable import TodoApp
 
 @Suite("TodoApp Core Tests")
@@ -49,6 +50,40 @@ struct TodoAppCoreTests {
         #expect(Priority.high.order > Priority.medium.order)
         #expect(Priority.medium.order > Priority.low.order)
         #expect(Priority.low.order > Priority.none.order)
+    }
+
+    @Test("Growing input reports clamped heights: min for one line, max once full")
+    @MainActor
+    func testGrowingTextEditorClampsHeight() {
+        var reported: [CGFloat] = []
+        let coordinator = GrowingTextEditor.Coordinator(
+            GrowingTextEditor(
+                text: .constant("hello"),
+                minHeight: 26,
+                maxHeight: 120,
+                onHeightChange: { reported.append($0) }
+            )
+        )
+
+        let textView = InputTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 300, height: 1000)
+        textView.textContainerInset = NSSize(width: 4, height: 4)
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = NSSize(width: 300, height: CGFloat.greatestFiniteMagnitude)
+        coordinator.textView = textView
+
+        coordinator.reportHeight()
+        let oneLine = reported.last
+        #expect(oneLine == 26) // clamped up to the minimum
+
+        textView.string = String(
+            repeating: "This is a long sentence that definitely wraps across several lines at three hundred points wide. ",
+            count: 12
+        )
+        coordinator.reportHeight()
+        let manyLines = reported.last
+        #expect(manyLines == 120) // clamped down to the maximum
+        #expect((manyLines ?? 0) > (oneLine ?? 0))
     }
 
     @Test("TodoStore mutations add, toggle, and delete tasks")
