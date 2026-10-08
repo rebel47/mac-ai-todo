@@ -20,11 +20,6 @@ struct TodoApp: App {
                     NotificationCenter.default.post(name: .focusNewTaskField, object: nil)
                 }
                 .keyboardShortcut("n", modifiers: .command)
-
-                Button("AI Task Creator...") {
-                    store.isShowingAIAssistant = true
-                }
-                .keyboardShortcut("i", modifiers: .command)
             }
 
             CommandMenu("View") {
@@ -93,48 +88,13 @@ struct ContentView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 8) {
-                    // AI Assistant Trigger
-                    Button {
-                        store.isShowingAIAssistant = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.blue, .purple, .pink],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                            Text("AI Creator")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            Color.purple.opacity(0.08),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .help("Create tasks with Voice or Text using AI (⌘I)")
-
-                    // Standard New Task Button
-                    Button {
-                        NotificationCenter.default.post(name: .focusNewTaskField, object: nil)
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .help("New Task (⌘N)")
+                Button {
+                    NotificationCenter.default.post(name: .focusNewTaskField, object: nil)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .semibold))
                 }
-            }
-        }
-        .sheet(isPresented: $store.isShowingAIAssistant) {
-            AIAssistantSheet(store: store) {
-                store.isShowingAIAssistant = false
+                .help("New Task (⌘N)")
             }
         }
     }

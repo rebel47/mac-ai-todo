@@ -18,7 +18,6 @@ class TodoStore: ObservableObject {
     @Published var selectedTaskId: UUID? = nil
     @Published var editingTask: TaskItem? = nil
     @Published var isShowingNewTagSheet: Bool = false
-    @Published var isShowingAIAssistant: Bool = false
 
     private var saveCancellable: AnyCancellable?
     private let saveSubject = PassthroughSubject<Void, Never>()

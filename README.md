@@ -1,6 +1,6 @@
 # Todo Mac 📋✨
 
-A sleek, modern, and minimalist native macOS Todo desktop application built with pure **Swift** and **SwiftUI**, now featuring an **AI Task Creator** supporting both **Voice Dictation** and **Text/Summary Extraction**.
+A sleek, modern, and minimalist native macOS Todo desktop application built with pure **Swift** and **SwiftUI**, powered by **Google Gemini 3 Flash** directly from the main input section.
 
 Designed specifically for macOS Sonoma and Sequoia, adhering strictly to Apple's Human Interface Guidelines with clean typography, smooth animations, native frosted materials, and zero Electron bloat.
 
@@ -8,30 +8,30 @@ Designed specifically for macOS Sonoma and Sequoia, adhering strictly to Apple's
 
 ## ✨ Features
 
-- **✨ AI Task Creator (`⌘I`)**:
-  - 🎙️ **Voice Dictation**: Click the animated pulsating microphone and speak naturally. Apple Speech Recognition transcribes your spoken voice into text in real time.
-  - ✍️ **Type / Paste Summary**: Paste meeting minutes, emails, Slack messages, or unstructured brain dumps.
-  - 🧠 **Intelligent Field Extraction**:
-    - **Actionable Titles**: Cleans imperatives and extracts clear task titles.
-    - **Timing & Due Dates**: Automatically recognizes dates and times (e.g., *"tomorrow at 3pm"*, *"by Friday"*, *"today"*, *"Oct 15"*). **If no date/timing information is provided or if unclear, the due date field is strictly left empty**, as expected!
-    - **Priority Flags**: Detects urgency (*urgent*, *asap*, *critical*) and sets High or Medium priority; leaves as None if unspecified.
-    - **Smart Tags**: Assigns to matching tags (*Work*, *Personal*, *Ideas*, *Urgent*); leaves as None if unclear.
-    - **Review & Import Screen**: Inspect, edit titles/dates, and toggle selection before adding to your list.
+- **⚡ Unified Direct AI Input (No bloated modal dialogs)**:
+  - **Type or Paste Directly**: Paste multi-task summaries, emails, meeting notes, or unstructured brain dumps right into the main input bar.
+  - **🎙️ Voice Dictation**: Click the microphone icon directly in the input bar to speak. Apple Speech Recognition transcribes your words into the input bar in real time.
+  - **✨ One-Click AI Extraction**: Click the **✨ AI** button or press Return—tasks are automatically extracted and added directly to your list.
+- **💎 Powered by Gemini 3 Flash**:
+  - Uses Google's latest **Gemini 3 Flash** model (`gemini-3-flash`) for fast, high-quality reasoning.
+  - **🔑 Quick API Key Button**: Click the subtle key icon in the input bar to paste your Gemini API key (`AIza...`).
+  - **Zero-Setup Fallback**: If no API key is provided, the app seamlessly runs using Apple's fast on-device NLP engine.
+- **🧠 Strict Timing & Date Handling**:
+  - Automatically parses explicit dates and relative times (e.g., *"tomorrow at 3pm"*, *"by Friday"*, *"today"*, *"Oct 15"*, *"at 4pm"*).
+  - **If date or timing information is not provided, missing, or unclear, the due date field is left completely empty (`nil`)**.
+- **Priority & Tag Detection**: Automatically identifies urgency (*urgent*, *asap*, *critical*) and matches tags (*Work*, *Personal*, *Ideas*, *Urgent*).
 - **Minimalist & Modern UI**: Clean SF Pro typography, uncluttered layout, native sidebar, and subtle translucent materials.
-- **Instant Quick Add (`⌘N`)**: Floating task input bar with inline due-date, priority, tag selectors, and a 1-click **✨ AI** button.
 - **Smart Views & Sidebar Filters**:
   - ☀️ **Today**: Focus only on tasks due today (`⌘1`)
   - 📅 **Upcoming**: Scheduled future tasks (`⌘2`)
   - 📋 **All Tasks**: Complete overview of active items (`⌘3`)
   - ⭐ **High Priority**: Urgent items (`⌘4`)
   - ✅ **Completed**: Archive of finished tasks (`⌘5`)
-- **Projects & Tags**: Create custom colored tags (Work, Personal, Urgent, Ideas, etc.) with custom color palettes.
+- **Projects & Tags**: Create custom colored tags with custom color palettes.
 - **Interactive Checkboxes**: Smooth spring animations with subtle completion sound.
 - **Task Inspector / Details**: Double-click or click edit on any task to add multi-line notes, adjust dates, or change priority flags.
 - **Instant Search (`⌘F`)**: Live fuzzy filtering across task titles, notes, and tags.
-- **Progress Tracking**: Minimal progress bar and completion fraction in sidebar.
-- **Native Persistence**: Automatically persists tasks and tags locally to JSON storage (`~/Library/Application Support/TodoMacApp/todos_data.json`).
-- **Retina App Icon**: Custom high-resolution vector squircle icon with standard macOS icon resolutions.
+- **Guaranteed Local Persistence**: Automatically persists tasks locally to JSON storage (`~/Library/Application Support/TodoMacApp/todos_data.json`) across app restarts and upon application exit.
 
 ---
 
@@ -51,20 +51,13 @@ If you make any changes to the Swift code, simply run:
 ```
 This compiles the Swift sources with `-O` release optimization, reassembles the `Todo.app` bundle, attaches `AppIcon.icns`, and signs it for macOS.
 
-### Option 3: Open in Xcode
-Open the project directory in Xcode:
-```bash
-open Package.swift
-```
-
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
 | Shortcut | Action |
 | :--- | :--- |
-| `⌘ I` | Open **AI Task Creator** (Voice & Text) |
-| `⌘ N` | Focus Quick Add task bar |
+| `⌘ N` | Focus main input bar |
 | `⌘ F` | Focus Search field |
 | `⌘ 1` | Switch to **Today** view |
 | `⌘ 2` | Switch to **Upcoming** view |
@@ -73,7 +66,7 @@ open Package.swift
 | `⌘ 5` | Switch to **Completed** view |
 | `⌘ S` | Toggle Sidebar visibility |
 | `⌘ ⇧ K` | Clear completed tasks |
-| `Return` | Submit new task in Quick Add |
+| `Return` | Submit new task or extract with AI |
 | `Double Click` | Open task detail & notes editor |
 
 ---
@@ -86,7 +79,7 @@ Todo Mac/
 │   └── Contents/
 │       ├── MacOS/TodoApp         # Compiled binary
 │       ├── Resources/AppIcon.icns# Retina App Icon
-│       └── Info.plist            # Application bundle metadata (with mic/speech permissions)
+│       └── Info.plist            # Application bundle metadata
 ├── Sources/
 │   └── TodoApp/
 │       ├── TodoApp.swift         # Main App entrypoint & AppKit Window Scene
@@ -97,19 +90,18 @@ Todo Mac/
 │       │   └── FilterType.swift  # Navigation & filter options
 │       ├── Services/
 │       │   ├── SpeechRecognizer.swift # Speech-to-text dictation service
-│       │   └── AITaskParser.swift     # NLP, date/time extraction & smart tagger
+│       │   └── AITaskParser.swift     # Gemini 3 Flash & Local NLP parser
 │       ├── Store/
 │       │   └── TodoStore.swift   # Observable state & JSON persistence
 │       └── Views/
-│           ├── AIAssistantSheet.swift # AI voice & text modal interface
 │           ├── SidebarView.swift # Navigation sidebar with counts & progress
 │           ├── TaskListView.swift# Main view with header, search & sections
 │           ├── TaskRowView.swift # Task card with animated checkbox & hover actions
-│           ├── NewTaskBar.swift  # Quick add floating input bar with AI button
+│           ├── NewTaskBar.swift  # Unified main input bar with mic, key & AI
 │           ├── TaskDetailSheet.swift # Detailed task editor modal
 │           └── EmptyStateView.swift  # Minimalist empty state graphic & copy
 ├── Tests/
-│   └── TodoAppTests/             # Automated test suite (core + AI parser tests)
+│   └── TodoAppTests/             # Automated test suite
 ├── Package.swift                 # Swift Package Manager manifest
 ├── build.sh                      # Automated build & bundle script
 └── Info.plist                    # Bundle metadata template

@@ -27,34 +27,6 @@ struct SidebarView: View {
                 filterRow(for: .completed)
             }
 
-            Section {
-                Button {
-                    store.isShowingAIAssistant = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.blue, .purple, .pink],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                        Text("AI Assistant")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
-                }
-                .buttonStyle(.plain)
-            }
 
             Section {
                 ForEach(store.tags) { tag in

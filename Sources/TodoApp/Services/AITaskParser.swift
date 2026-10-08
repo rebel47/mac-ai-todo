@@ -1,24 +1,6 @@
 import Foundation
 import NaturalLanguage
 
-enum AIProvider: String, CaseIterable, Identifiable {
-    case onDevice = "On-Device (Apple Intelligence / Free)"
-    case openAI = "OpenAI (GPT-4o-mini)"
-    case gemini = "Google Gemini (1.5 Flash)"
-    case ollama = "Local Ollama"
-
-    var id: String { rawValue }
-
-    var shortName: String {
-        switch self {
-        case .onDevice: return "On-Device (Free)"
-        case .openAI: return "OpenAI"
-        case .gemini: return "Gemini"
-        case .ollama: return "Ollama"
-        }
-    }
-}
-
 struct ParsedTaskItem: Identifiable, Hashable {
     var id: UUID = UUID()
     var title: String
@@ -33,90 +15,45 @@ class AITaskParser {
 
     static let shared = AITaskParser()
 
-    // MARK: - Async Parse (Supports On-Device or Cloud/Local LLMs)
+    // MARK: - Smart Extraction (Gemini 3 Flash or Local NLP Fallback)
 
-    func parseTasksAsync(
+    func extractTasks(
         from text: String,
-        availableTags: [TagItem],
-        provider: AIProvider = .onDevice,
-        apiKey: String = "",
-        ollamaEndpoint: String = "http://localhost:11434"
+        apiKey: String,
+        availableTags: [TagItem]
     ) async -> [ParsedTaskItem] {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        switch provider {
-        case .openAI:
-            if !trimmedKey.isEmpty {
-                if let tasks = await callOpenAI(text: text, apiKey: trimmedKey, availableTags: availableTags) {
-                    return tasks
-                }
-            }
-        case .gemini:
-            if !trimmedKey.isEmpty {
-                if let tasks = await callGemini(text: text, apiKey: trimmedKey, availableTags: availableTags) {
-                    return tasks
-                }
-            }
-        case .ollama:
-            if let tasks = await callOllama(text: text, endpoint: ollamaEndpoint, availableTags: availableTags) {
+        // If user has provided a Gemini API key, use Gemini 3 Flash
+        if !trimmedKey.isEmpty {
+            if let tasks = await callGemini(text: text, apiKey: trimmedKey, availableTags: availableTags), !tasks.isEmpty {
                 return tasks
             }
-        case .onDevice:
-            break
         }
 
-        // Default or Fallback: Built-in On-Device NLP
-        return parseTasks(from: text, availableTags: availableTags)
+        // Otherwise use on-device local NLP parser
+        return parseTasksLocal(from: text, availableTags: availableTags)
     }
 
-    // MARK: - Cloud LLM Calls
+    // MARK: - Google Gemini 3 Flash API
 
-    private func callOpenAI(text: String, apiKey: String, availableTags: [TagItem]) async -> [ParsedTaskItem]? {
-        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else { return nil }
-
-        let systemPrompt = makeSystemPrompt(availableTags: availableTags)
-        let body: [String: Any] = [
-            "model": "gpt-4o-mini",
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": text]
-            ],
-            "response_format": ["type": "json_object"],
-            "temperature": 0.2
-        ]
-
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = httpBody
-        request.timeoutInterval = 15
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
-
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let choices = json["choices"] as? [[String: Any]],
-               let firstChoice = choices.first,
-               let message = firstChoice["message"] as? [String: Any],
-               let content = message["content"] as? String {
-                return parseLLMJSONResponse(content, availableTags: availableTags)
+    private func callGemini(text: String, apiKey: String, availableTags: [TagItem]) async -> [ParsedTaskItem]? {
+        // Primary model is gemini-3-flash as requested, with fallback to gemini-2.5-flash
+        let models = ["gemini-3-flash", "gemini-2.5-flash"]
+        for model in models {
+            if let result = await executeGeminiRequest(model: model, text: text, apiKey: apiKey, availableTags: availableTags) {
+                return result
             }
-        } catch {
-            print("OpenAI call failed, falling back to on-device: \(error)")
         }
-
         return nil
     }
 
-    private func callGemini(text: String, apiKey: String, availableTags: [TagItem]) async -> [ParsedTaskItem]? {
-        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\(apiKey)") else { return nil }
+    private func executeGeminiRequest(model: String, text: String, apiKey: String, availableTags: [TagItem]) async -> [ParsedTaskItem]? {
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
+        guard let url = URL(string: urlString) else { return nil }
 
         let systemPrompt = makeSystemPrompt(availableTags: availableTags)
-        let promptText = "\(systemPrompt)\n\nUser Input:\n\(text)"
+        let promptText = "\(systemPrompt)\n\nUser Input to extract into todo items:\n\(text)"
 
         let body: [String: Any] = [
             "contents": [
@@ -127,7 +64,8 @@ class AITaskParser {
                 ]
             ],
             "generationConfig": [
-                "response_mime_type": "application/json"
+                "response_mime_type": "application/json",
+                "temperature": 0.1
             ]
         ]
 
@@ -141,7 +79,9 @@ class AITaskParser {
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return nil
+            }
 
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let candidates = json["candidates"] as? [[String: Any]],
@@ -153,44 +93,7 @@ class AITaskParser {
                 return parseLLMJSONResponse(textResponse, availableTags: availableTags)
             }
         } catch {
-            print("Gemini call failed, falling back to on-device: \(error)")
-        }
-
-        return nil
-    }
-
-    private func callOllama(text: String, endpoint: String, availableTags: [TagItem]) async -> [ParsedTaskItem]? {
-        let cleanEndpoint = endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        guard let url = URL(string: "\(cleanEndpoint)/api/generate") else { return nil }
-
-        let systemPrompt = makeSystemPrompt(availableTags: availableTags)
-        let prompt = "\(systemPrompt)\n\nUser Input:\n\(text)"
-
-        let body: [String: Any] = [
-            "model": "llama3.2",
-            "prompt": prompt,
-            "format": "json",
-            "stream": false
-        ]
-
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = httpBody
-        request.timeoutInterval = 15
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
-
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let responseStr = json["response"] as? String {
-                return parseLLMJSONResponse(responseStr, availableTags: availableTags)
-            }
-        } catch {
-            print("Ollama call failed, falling back to on-device: \(error)")
+            print("Gemini (\(model)) call error: \(error)")
         }
 
         return nil
@@ -198,20 +101,24 @@ class AITaskParser {
 
     private func makeSystemPrompt(availableTags: [TagItem]) -> String {
         let tagNames = availableTags.map { $0.name }.joined(separator: ", ")
-        let todayStr = ISO8601DateFormatter().string(from: Date())
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let nowString = formatter.string(from: Date())
 
         return """
-        You are a task extractor for a macOS Todo application. Today is \(todayStr).
-        Analyze the user's input text (or transcript) and extract actionable todo tasks into a JSON object with a "tasks" array.
-        Each task must have:
-        - "title": Concise, imperative action title (e.g. "Prepare presentation slides")
-        - "notes": Secondary context or description (empty string if none)
-        - "dueDate": ISO-8601 formatted string if a date or time is explicitly mentioned (e.g. "2026-10-09T15:00:00Z"). CRITICAL: If no date/timing information is provided or if unclear, dueDate MUST BE null.
-        - "priority": One of "High", "Medium", "Low", "None". Set "High" only for urgent/critical items.
-        - "tag": One of [\(tagNames)] if relevant, otherwise null.
+        You are a concise, structured task extraction engine for a macOS Todo application. Current date and time is \(nowString).
+        Analyze the text or summary and extract distinct actionable to-do tasks into a JSON object containing a "tasks" array.
 
-        Output only valid JSON:
-        {"tasks": [{"title": "...", "notes": "...", "dueDate": null, "priority": "None", "tag": null}]}
+        Strict Rules:
+        1. "title": Short, clean, imperative task title (e.g. "Review Q3 budget deck", "Email Sarah about mockups").
+        2. "notes": Additional context, phone numbers, links, or details mentioned (empty string "" if none).
+        3. "dueDate": ISO-8601 string (e.g. "2026-10-09T15:00:00Z") ONLY if a date or time is explicitly mentioned or clearly implied (e.g., "tomorrow at 3pm", "by Friday", "tonight", "Oct 15").
+           IMPORTANT: If the timing or date is NOT provided, missing, or unclear, "dueDate" MUST be null.
+        4. "priority": One of "High", "Medium", "Low", "None". Set "High" only for urgent/critical/asap items, otherwise "None".
+        5. "tag": One of [\(tagNames)] if relevant, otherwise null.
+
+        Output ONLY valid JSON matching this schema:
+        {"tasks": [{"title": "...", "notes": "", "dueDate": null, "priority": "None", "tag": null}]}
         """
     }
 
@@ -265,24 +172,21 @@ class AITaskParser {
         return results.isEmpty ? nil : results
     }
 
-    // MARK: - On-Device NLP & Heuristic Extraction (Zero API Key, 100% Private)
+    // MARK: - On-Device NLP & Heuristic Extraction (Offline / Zero Setup)
 
-    func parseTasks(from text: String, availableTags: [TagItem]) -> [ParsedTaskItem] {
+    func parseTasksLocal(from text: String, availableTags: [TagItem]) -> [ParsedTaskItem] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
-        // Step 1: Split into distinct candidate task segments
         let segments = extractCandidateSegments(from: trimmed)
-
-        // Step 2: Parse each segment into a structured task
         var tasks: [ParsedTaskItem] = []
+
         for segment in segments {
             if let task = parseIndividualSegment(segment, availableTags: availableTags) {
                 tasks.append(task)
             }
         }
 
-        // If no tasks could be parsed via segmented breakdown, attempt whole-text single task
         if tasks.isEmpty {
             if let single = parseIndividualSegment(trimmed, availableTags: availableTags) {
                 tasks.append(single)
@@ -291,8 +195,6 @@ class AITaskParser {
 
         return tasks
     }
-
-    // MARK: - Segmentation
 
     private func extractCandidateSegments(from text: String) -> [String] {
         var results: [String] = []
@@ -329,8 +231,6 @@ class AITaskParser {
         return [line]
     }
 
-    // MARK: - Segment Parsing
-
     private func parseIndividualSegment(_ rawText: String, availableTags: [TagItem]) -> ParsedTaskItem? {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.count > 2 else { return nil }
@@ -359,14 +259,11 @@ class AITaskParser {
         )
     }
 
-    // MARK: - Date Extraction
-
     private func extractDueDate(from text: String) -> (Date?, String) {
         let calendar = Calendar.current
         let now = Date()
         let lower = text.lowercased()
 
-        // Check explicit natural keywords first
         if lower.contains("today") || lower.contains("tonight") || lower.contains("this evening") {
             let cleaned = removePhrase(text, matches: ["today", "tonight", "this evening"])
             let targetDate = calendar.startOfDay(for: now)
@@ -447,8 +344,6 @@ class AITaskParser {
         return nil
     }
 
-    // MARK: - Priority Extraction
-
     private func extractPriority(from text: String) -> (Priority, String) {
         let lower = text.lowercased()
 
@@ -475,8 +370,6 @@ class AITaskParser {
 
         return (.none, text)
     }
-
-    // MARK: - Tag Extraction
 
     private func extractTag(from text: String, availableTags: [TagItem]) -> (UUID?, String) {
         let lower = text.lowercased()
@@ -508,8 +401,6 @@ class AITaskParser {
 
         return (nil, text)
     }
-
-    // MARK: - Title and Notes Extraction
 
     private func extractTitleAndNotes(from text: String) -> (String, String) {
         var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)

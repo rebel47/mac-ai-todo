@@ -4,167 +4,59 @@ struct NewTaskBar: View {
     @ObservedObject var store: TodoStore
     @FocusState private var isFieldFocused: Bool
 
+    // Gemini API Key storage
+    @AppStorage("gemini_api_key") private var geminiApiKey: String = ""
+
+    // Voice dictation state
+    @StateObject private var speechRecognizer = SpeechRecognizer()
+    @State private var isMicPulsing: Bool = false
+
+    // Input state
     @State private var taskTitle: String = ""
     @State private var selectedPriority: Priority = .none
     @State private var selectedTagId: UUID? = nil
     @State private var selectedDueDate: Date? = nil
-    @State private var isShowingDatePicker: Bool = false
+
+    // UI Feedback state
+    @State private var isShowingKeyPopover: Bool = false
+    @State private var isProcessingAI: Bool = false
+    @State private var statusToast: String? = nil
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+        VStack(spacing: 6) {
+            // Main Input Container
+            HStack(spacing: 8) {
+                // Leading Icon / Status
+                leadingStatusIcon
 
-                TextField("Add a task... (Press Return to add)", text: $taskTitle)
+                // Main Text Input
+                TextField(inputPlaceholder, text: $taskTitle)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .focused($isFieldFocused)
                     .onSubmit {
-                        submitTask()
+                        handleTextSubmission()
                     }
 
-                // Quick Action Controls
+                // Controls Row
                 HStack(spacing: 6) {
-                    // Due Date Button
-                    Menu {
-                        Button("No Date") { selectedDueDate = nil }
-                        Button("Today") { selectedDueDate = Date() }
-                        Button("Tomorrow") {
-                            selectedDueDate = Calendar.current.date(byAdding: .day, value: 1, to: Date())
-                        }
-                        Button("Next Week") {
-                            selectedDueDate = Calendar.current.date(byAdding: .day, value: 7, to: Date())
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 11))
-                            if let date = selectedDueDate {
-                                Text(formatQuickDate(date))
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                        }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(
-                            selectedDueDate != nil ? Color.orange.opacity(0.12) : Color.primary.opacity(0.05),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .foregroundStyle(selectedDueDate != nil ? Color.orange : Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Set Due Date")
+                    // 1. Microphone Dictation Button
+                    micButton
 
-                    // Priority Selector
-                    Menu {
-                        ForEach(Priority.allCases) { priority in
-                            Button {
-                                selectedPriority = priority
-                            } label: {
-                                HStack {
-                                    Text(priority.title)
-                                    if selectedPriority == priority {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: selectedPriority.iconName)
-                                .font(.system(size: 11))
-                            if selectedPriority != .none {
-                                Text(selectedPriority.rawValue)
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                        }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(
-                            selectedPriority != .none ? selectedPriority.color.opacity(0.12) : Color.primary.opacity(0.05),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .foregroundStyle(selectedPriority != .none ? selectedPriority.color : Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Set Priority")
+                    // 2. Gemini API Key Configuration Popover
+                    apiKeyButton
 
-                    // Tag Selector
-                    Menu {
-                        Button("No Tag") { selectedTagId = nil }
-                        ForEach(store.tags) { tag in
-                            Button {
-                                selectedTagId = tag.id
-                            } label: {
-                                HStack {
-                                    Text(tag.name)
-                                    if selectedTagId == tag.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "tag")
-                                .font(.system(size: 11))
-                            if let tagId = selectedTagId, let tag = store.tag(for: tagId) {
-                                Text(tag.name)
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                        }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(
-                            selectedTagId != nil ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.05),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .foregroundStyle(selectedTagId != nil ? Color.accentColor : Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Set Tag")
+                    // 3. Quick Attributes (Due Date, Priority, Tag)
+                    quickAttributesMenu
 
-                    // AI Assistant Trigger Button
-                    Button {
-                        store.isShowingAIAssistant = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.blue, .purple, .pink],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                            Text("AI")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.primary)
-                        }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(
-                            Color.purple.opacity(0.1),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .help("Create tasks with AI (Voice or Text) - ⌘I")
-
-                    // Submit button
+                    // 4. Magic AI Action Button
                     if !taskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Button {
-                            submitTask()
-                        } label: {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(Color.accentColor)
-                        }
-                        .buttonStyle(.plain)
-                        .transition(.scale.combined(with: .opacity))
+                        aiMagicButton
+                    }
+
+                    // 5. Submit / Add Button
+                    if !taskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+                        submitButton
                     }
                 }
             }
@@ -177,8 +69,27 @@ struct NewTaskBar: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isFieldFocused ? Color.accentColor.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: 1)
+                    .stroke(
+                        isProcessingAI ? Color.purple.opacity(0.7) :
+                            (isFieldFocused ? Color.accentColor.opacity(0.6) : Color.primary.opacity(0.08)),
+                        lineWidth: isProcessingAI ? 1.5 : 1
+                    )
             )
+
+            // Status feedback banner
+            if let status = statusToast {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.purple)
+                    Text(status)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .onAppear {
             presetBasedOnCurrentFilter()
@@ -186,8 +97,409 @@ struct NewTaskBar: View {
         .onChange(of: store.selectedFilter) {
             presetBasedOnCurrentFilter()
         }
+        .onChange(of: speechRecognizer.transcript) {
+            if speechRecognizer.isRecording && !speechRecognizer.transcript.isEmpty {
+                taskTitle = speechRecognizer.transcript
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .focusNewTaskField)) { _ in
             isFieldFocused = true
+        }
+    }
+
+    private var inputPlaceholder: String {
+        if speechRecognizer.isRecording {
+            return "Listening to your voice... Speak now"
+        }
+        return "Add task, or type/paste summary... (press Return or ✨)"
+    }
+
+    // MARK: - Leading Icon
+
+    private var leadingStatusIcon: some View {
+        Group {
+            if isProcessingAI {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 18, height: 18)
+            } else if speechRecognizer.isRecording {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(isMicPulsing ? 1.3 : 0.9)
+                    .animation(.easeInOut(duration: 0.6).repeatForever(), value: isMicPulsing)
+            } else {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Voice Dictation
+
+    private var micButton: some View {
+        Button {
+            toggleVoiceRecording()
+        } label: {
+            ZStack {
+                if speechRecognizer.isRecording {
+                    Circle()
+                        .fill(Color.red.opacity(0.15))
+                        .frame(width: 26, height: 26)
+                }
+
+                Image(systemName: speechRecognizer.isRecording ? "stop.circle.fill" : "mic")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(speechRecognizer.isRecording ? Color.red : Color.secondary)
+            }
+            .frame(width: 24, height: 24)
+        }
+        .buttonStyle(.plain)
+        .help(speechRecognizer.isRecording ? "Stop dictation" : "Speak to dictate task or summary")
+    }
+
+    private func toggleVoiceRecording() {
+        if speechRecognizer.isRecording {
+            speechRecognizer.stopRecording()
+            isMicPulsing = false
+            if !taskTitle.isEmpty {
+                // Check if the transcribed voice input looks like a multi-item summary or single item
+                if isLikelyMultipleTasks(taskTitle) {
+                    processWithAI()
+                }
+            }
+        } else {
+            taskTitle = ""
+            speechRecognizer.startRecording()
+            isMicPulsing = true
+            isFieldFocused = true
+        }
+    }
+
+    // MARK: - API Key Popover Button
+
+    private var apiKeyButton: some View {
+        Button {
+            isShowingKeyPopover.toggle()
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: hasGeminiKey ? "key.fill" : "key")
+                    .font(.system(size: 11))
+                    .foregroundStyle(hasGeminiKey ? Color.green : Color.secondary)
+
+                if hasGeminiKey {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 5, height: 5)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help("Gemini 3 Flash API Key Settings")
+        .popover(isPresented: $isShowingKeyPopover) {
+            apiKeyPopoverView
+        }
+    }
+
+    private var hasGeminiKey: Bool {
+        !geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var apiKeyPopoverView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.purple)
+                Text("Gemini 3 Flash API Key")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("API Key:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                SecureField("Paste your Gemini API key (AIza...)", text: $geminiApiKey)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 280)
+            }
+
+            if hasGeminiKey {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.green)
+                        .font(.system(size: 12))
+                    Text("Gemini 3 Flash Active")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.green)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.shield")
+                        .foregroundStyle(Color.secondary)
+                        .font(.system(size: 12))
+                    Text("Using Apple On-Device NLP (Paste key for Gemini 3 Flash)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Get a free API key at aistudio.google.com")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+            HStack {
+                if hasGeminiKey {
+                    Button("Remove Key") {
+                        geminiApiKey = ""
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+
+                Button("Done") {
+                    isShowingKeyPopover = false
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            .padding(.top, 4)
+        }
+        .padding(16)
+        .frame(width: 310)
+    }
+
+    // MARK: - AI Magic Button
+
+    private var aiMagicButton: some View {
+        Button {
+            processWithAI()
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.blue, .purple, .pink],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text("AI")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Color.purple.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: 6)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Extract tasks using AI (Gemini 3 Flash or Local NLP)")
+        .disabled(isProcessingAI)
+    }
+
+    // MARK: - Submit Button
+
+    private var submitButton: some View {
+        Button {
+            handleTextSubmission()
+        } label: {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .transition(.scale.combined(with: .opacity))
+        .disabled(isProcessingAI)
+    }
+
+    // MARK: - Quick Attributes (Date, Priority, Tag)
+
+    private var quickAttributesMenu: some View {
+        HStack(spacing: 4) {
+            // Due Date
+            Menu {
+                Button("No Date") { selectedDueDate = nil }
+                Button("Today") { selectedDueDate = Date() }
+                Button("Tomorrow") {
+                    selectedDueDate = Calendar.current.date(byAdding: .day, value: 1, to: Date())
+                }
+                Button("Next Week") {
+                    selectedDueDate = Calendar.current.date(byAdding: .day, value: 7, to: Date())
+                }
+            } label: {
+                Image(systemName: "calendar")
+                    .font(.system(size: 11))
+                    .foregroundStyle(selectedDueDate != nil ? Color.orange : Color.secondary)
+                    .padding(4)
+                    .background(selectedDueDate != nil ? Color.orange.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            }
+            .buttonStyle(.plain)
+            .help("Set Due Date")
+
+            // Priority
+            Menu {
+                ForEach(Priority.allCases) { priority in
+                    Button {
+                        selectedPriority = priority
+                    } label: {
+                        HStack {
+                            Text(priority.title)
+                            if selectedPriority == priority {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: selectedPriority.iconName)
+                    .font(.system(size: 11))
+                    .foregroundStyle(selectedPriority != .none ? selectedPriority.color : Color.secondary)
+                    .padding(4)
+                    .background(selectedPriority != .none ? selectedPriority.color.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            }
+            .buttonStyle(.plain)
+            .help("Set Priority")
+
+            // Tag
+            Menu {
+                Button("No Tag") { selectedTagId = nil }
+                ForEach(store.tags) { tag in
+                    Button {
+                        selectedTagId = tag.id
+                    } label: {
+                        HStack {
+                            Text(tag.name)
+                            if selectedTagId == tag.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "tag")
+                    .font(.system(size: 11))
+                    .foregroundStyle(selectedTagId != nil ? Color.accentColor : Color.secondary)
+                    .padding(4)
+                    .background(selectedTagId != nil ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            }
+            .buttonStyle(.plain)
+            .help("Set Tag")
+        }
+    }
+
+    // MARK: - Actions
+
+    private func handleTextSubmission() {
+        let trimmed = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        // If the text looks like a summary or multiple tasks, run AI directly!
+        if isLikelyMultipleTasks(trimmed) {
+            processWithAI()
+        } else {
+            // Standard single task addition
+            store.addTask(
+                title: trimmed,
+                notes: "",
+                dueDate: selectedDueDate,
+                priority: selectedPriority,
+                tagId: selectedTagId
+            )
+            taskTitle = ""
+            presetBasedOnCurrentFilter()
+            isFieldFocused = true
+        }
+    }
+
+    private func processWithAI() {
+        let text = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        if speechRecognizer.isRecording {
+            speechRecognizer.stopRecording()
+            isMicPulsing = false
+        }
+
+        isProcessingAI = true
+        let key = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let usingGemini = !key.isEmpty
+
+        Task {
+            let extracted = await AITaskParser.shared.extractTasks(
+                from: text,
+                apiKey: key,
+                availableTags: store.tags
+            )
+
+            await MainActor.run {
+                if !extracted.isEmpty {
+                    for item in extracted {
+                        store.addTask(
+                            title: item.title,
+                            notes: item.notes,
+                            dueDate: item.dueDate,
+                            priority: item.priority,
+                            tagId: item.tagId
+                        )
+                    }
+                    NSSound(named: "Glass")?.play()
+
+                    let engineName = usingGemini ? "Gemini 3 Flash" : "AI"
+                    showToast("✨ Added \(extracted.count) \(extracted.count == 1 ? "task" : "tasks") with \(engineName)")
+                } else {
+                    // Fallback to adding the single item
+                    store.addTask(
+                        title: text,
+                        notes: "",
+                        dueDate: selectedDueDate,
+                        priority: selectedPriority,
+                        tagId: selectedTagId
+                    )
+                    showToast("Added task")
+                }
+
+                taskTitle = ""
+                presetBasedOnCurrentFilter()
+                isProcessingAI = false
+                isFieldFocused = true
+            }
+        }
+    }
+
+    private func isLikelyMultipleTasks(_ text: String) -> Bool {
+        // Multi-line
+        if text.contains("\n") { return true }
+        // Contains bullets or numbering
+        if text.range(of: "^([0-9]+\\.|[-*•])", options: .regularExpression) != nil { return true }
+        // Contains strong conjunctions or keywords
+        let lower = text.lowercased()
+        if lower.contains(" and also ") || lower.contains("; ") || lower.contains(" and then ") { return true }
+        if lower.contains("need to") && (lower.contains("also") || lower.contains("and")) { return true }
+        return false
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation {
+            statusToast = message
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            withAnimation {
+                if self.statusToast == message {
+                    self.statusToast = nil
+                }
+            }
         }
     }
 
@@ -209,35 +521,6 @@ struct NewTaskBar: View {
             selectedDueDate = nil
             selectedPriority = .none
             selectedTagId = nil
-        }
-    }
-
-    private func submitTask() {
-        let trimmed = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        store.addTask(
-            title: trimmed,
-            notes: "",
-            dueDate: selectedDueDate,
-            priority: selectedPriority,
-            tagId: selectedTagId
-        )
-
-        taskTitle = ""
-        presetBasedOnCurrentFilter()
-        isFieldFocused = true
-    }
-
-    private func formatQuickDate(_ date: Date) -> String {
-        if Calendar.current.isDateInToday(date) {
-            return "Today"
-        } else if Calendar.current.isDateInTomorrow(date) {
-            return "Tomorrow"
-        } else {
-            let df = DateFormatter()
-            df.dateFormat = "MMM d"
-            return df.string(from: date)
         }
     }
 }
