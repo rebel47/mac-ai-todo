@@ -63,17 +63,30 @@ struct TodoAppCoreTests {
 
         // Test with explicit timing
         let textWithDate = "Finalize the quarterly presentation by tomorrow at 3pm urgent"
-        let tasksWithDate = parser.parseTasks(from: textWithDate, availableTags: tags)
+        let tasksWithDate = parser.parseTasksLocal(from: textWithDate, availableTags: tags)
         #expect(tasksWithDate.count == 1)
         #expect(tasksWithDate.first?.dueDate != nil)
         #expect(tasksWithDate.first?.priority == .high)
 
         // Test WITHOUT timing - should leave dueDate strictly nil
-        let textWithoutDate = "Buy milk and bread from the grocery store"
-        let tasksWithoutDate = parser.parseTasks(from: textWithoutDate, availableTags: tags)
-        #expect(tasksWithoutDate.count >= 1)
+        let textWithoutDate = "Buy milk from the grocery store"
+        let tasksWithoutDate = parser.parseTasksLocal(from: textWithoutDate, availableTags: tags)
+        #expect(tasksWithoutDate.count == 1)
         #expect(tasksWithoutDate.first?.dueDate == nil)
         #expect(tasksWithoutDate.first?.priority == .none)
+    }
+
+    @Test("AI Task Parser splits multiple tasks separated by commas and conjunctions")
+    func testAITaskParserSplitsCommasAndConjunctions() {
+        let tags = TagItem.defaultTags
+        let parser = AITaskParser.shared
+
+        let singleSentenceMultipleTasks = "Buy milk, call the dentist and finish homework"
+        let tasks = parser.parseTasksLocal(from: singleSentenceMultipleTasks, availableTags: tags)
+        #expect(tasks.count == 3)
+        #expect(tasks[0].title.lowercased().contains("milk"))
+        #expect(tasks[1].title.lowercased().contains("dentist"))
+        #expect(tasks[2].title.lowercased().contains("homework"))
     }
 
     @Test("AI Task Parser extracts multiple tasks from paragraphs or meeting notes")
@@ -87,7 +100,7 @@ struct TodoAppCoreTests {
         3. Brainstorm new app features when possible
         """
 
-        let tasks = parser.parseTasks(from: meetingSummary, availableTags: tags)
+        let tasks = parser.parseTasksLocal(from: meetingSummary, availableTags: tags)
         #expect(tasks.count == 3)
         #expect(tasks[0].dueDate != nil)
         #expect(tasks[1].priority == .high)

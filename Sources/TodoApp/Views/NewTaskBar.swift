@@ -26,16 +26,16 @@ struct NewTaskBar: View {
         VStack(spacing: 6) {
             // Main Input Container
             HStack(spacing: 8) {
-                // Leading Icon / Status
+                // Leading Icon / Status Spinner
                 leadingStatusIcon
 
-                // Main Text Input
+                // Main Text Input (Type or Paste anything here)
                 TextField(inputPlaceholder, text: $taskTitle)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .focused($isFieldFocused)
                     .onSubmit {
-                        handleTextSubmission()
+                        submitWithAI()
                     }
 
                 // Controls Row
@@ -49,12 +49,7 @@ struct NewTaskBar: View {
                     // 3. Quick Attributes (Due Date, Priority, Tag)
                     quickAttributesMenu
 
-                    // 4. Magic AI Action Button
-                    if !taskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
-                        aiMagicButton
-                    }
-
-                    // 5. Submit / Add Button
+                    // 4. Submit / AI Extract Button
                     if !taskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
                         submitButton
                     }
@@ -79,12 +74,12 @@ struct NewTaskBar: View {
             // Status feedback banner
             if let status = statusToast {
                 HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
+                    Image(systemName: status.contains("⚠️") ? "exclamationmark.triangle" : "sparkles")
                         .font(.system(size: 11))
-                        .foregroundStyle(Color.purple)
+                        .foregroundStyle(status.contains("⚠️") ? Color.orange : Color.purple)
                     Text(status)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(status.contains("⚠️") ? Color.orange : Color.secondary)
                     Spacer()
                 }
                 .padding(.horizontal, 4)
@@ -111,7 +106,10 @@ struct NewTaskBar: View {
         if speechRecognizer.isRecording {
             return "Listening to your voice... Speak now"
         }
-        return "Add task, or type/paste summary... (press Return or ✨)"
+        if hasGeminiKey {
+            return "Add task or paste summary... (Gemini 3 Flash enabled)"
+        }
+        return "Add task or paste summary... (press Return to add)"
     }
 
     // MARK: - Leading Icon
@@ -164,10 +162,7 @@ struct NewTaskBar: View {
             speechRecognizer.stopRecording()
             isMicPulsing = false
             if !taskTitle.isEmpty {
-                // Check if the transcribed voice input looks like a multi-item summary or single item
-                if isLikelyMultipleTasks(taskTitle) {
-                    processWithAI()
-                }
+                submitWithAI()
             }
         } else {
             taskTitle = ""
@@ -243,13 +238,13 @@ struct NewTaskBar: View {
                     Image(systemName: "bolt.shield")
                         .foregroundStyle(Color.secondary)
                         .font(.system(size: 12))
-                    Text("Using Apple On-Device NLP (Paste key for Gemini 3 Flash)")
+                    Text("Using Apple On-Device Smart AI")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Text("Get a free API key at aistudio.google.com")
+            Text("Get a free key at aistudio.google.com")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -277,11 +272,11 @@ struct NewTaskBar: View {
         .frame(width: 310)
     }
 
-    // MARK: - AI Magic Button
+    // MARK: - Submit Button
 
-    private var aiMagicButton: some View {
+    private var submitButton: some View {
         Button {
-            processWithAI()
+            submitWithAI()
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: "sparkles")
@@ -293,35 +288,15 @@ struct NewTaskBar: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                Text("AI")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.primary)
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.accentColor)
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(
-                Color.purple.opacity(0.12),
-                in: RoundedRectangle(cornerRadius: 6)
-            )
-        }
-        .buttonStyle(.plain)
-        .help("Extract tasks using AI (Gemini 3 Flash or Local NLP)")
-        .disabled(isProcessingAI)
-    }
-
-    // MARK: - Submit Button
-
-    private var submitButton: some View {
-        Button {
-            handleTextSubmission()
-        } label: {
-            Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(Color.accentColor)
         }
         .buttonStyle(.plain)
         .transition(.scale.combined(with: .opacity))
         .disabled(isProcessingAI)
+        .help("Submit and parse with AI")
     }
 
     // MARK: - Quick Attributes (Date, Priority, Tag)
@@ -399,31 +374,9 @@ struct NewTaskBar: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Unified AI Submission Action
 
-    private func handleTextSubmission() {
-        let trimmed = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        // If the text looks like a summary or multiple tasks, run AI directly!
-        if isLikelyMultipleTasks(trimmed) {
-            processWithAI()
-        } else {
-            // Standard single task addition
-            store.addTask(
-                title: trimmed,
-                notes: "",
-                dueDate: selectedDueDate,
-                priority: selectedPriority,
-                tagId: selectedTagId
-            )
-            taskTitle = ""
-            presetBasedOnCurrentFilter()
-            isFieldFocused = true
-        }
-    }
-
-    private func processWithAI() {
+    private func submitWithAI() {
         let text = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
@@ -434,38 +387,48 @@ struct NewTaskBar: View {
 
         isProcessingAI = true
         let key = geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let usingGemini = !key.isEmpty
+        let manualDueDate = selectedDueDate
+        let manualPriority = selectedPriority
+        let manualTagId = selectedTagId
 
         Task {
-            let extracted = await AITaskParser.shared.extractTasks(
+            let result = await AITaskParser.shared.extractTasks(
                 from: text,
                 apiKey: key,
                 availableTags: store.tags
             )
 
             await MainActor.run {
-                if !extracted.isEmpty {
-                    for item in extracted {
+                if !result.tasks.isEmpty {
+                    for item in result.tasks {
+                        // Apply manual selections if the AI did not identify one
+                        let finalDueDate = item.dueDate ?? manualDueDate
+                        let finalPriority = item.priority != .none ? item.priority : manualPriority
+                        let finalTagId = item.tagId ?? manualTagId
+
                         store.addTask(
                             title: item.title,
                             notes: item.notes,
-                            dueDate: item.dueDate,
-                            priority: item.priority,
-                            tagId: item.tagId
+                            dueDate: finalDueDate,
+                            priority: finalPriority,
+                            tagId: finalTagId
                         )
                     }
                     NSSound(named: "Glass")?.play()
 
-                    let engineName = usingGemini ? "Gemini 3 Flash" : "AI"
-                    showToast("✨ Added \(extracted.count) \(extracted.count == 1 ? "task" : "tasks") with \(engineName)")
+                    if let err = result.errorDescription {
+                        showToast("⚠️ \(err) · Added via Local AI")
+                    } else {
+                        showToast("✨ Added \(result.tasks.count) \(result.tasks.count == 1 ? "task" : "tasks") via \(result.engineName)")
+                    }
                 } else {
                     // Fallback to adding the single item
                     store.addTask(
                         title: text,
                         notes: "",
-                        dueDate: selectedDueDate,
-                        priority: selectedPriority,
-                        tagId: selectedTagId
+                        dueDate: manualDueDate,
+                        priority: manualPriority,
+                        tagId: manualTagId
                     )
                     showToast("Added task")
                 }
@@ -478,23 +441,11 @@ struct NewTaskBar: View {
         }
     }
 
-    private func isLikelyMultipleTasks(_ text: String) -> Bool {
-        // Multi-line
-        if text.contains("\n") { return true }
-        // Contains bullets or numbering
-        if text.range(of: "^([0-9]+\\.|[-*•])", options: .regularExpression) != nil { return true }
-        // Contains strong conjunctions or keywords
-        let lower = text.lowercased()
-        if lower.contains(" and also ") || lower.contains("; ") || lower.contains(" and then ") { return true }
-        if lower.contains("need to") && (lower.contains("also") || lower.contains("and")) { return true }
-        return false
-    }
-
     private func showToast(_ message: String) {
         withAnimation {
             statusToast = message
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
             withAnimation {
                 if self.statusToast == message {
                     self.statusToast = nil
